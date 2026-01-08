@@ -1,7 +1,21 @@
 import { PrismaClient } from '@prisma/client';
 
 const prismaClientSingleton = () => {
-    return new PrismaClient();
+    // Debug logging
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+        console.error('CRITICAL: DATABASE_URL is missing in runtime environment');
+    } else {
+        console.log('DATABASE_URL found (length: ' + url.length + ')');
+    }
+
+    return new PrismaClient({
+        datasources: {
+            db: {
+                url: process.env.DATABASE_URL,
+            },
+        },
+    });
 };
 
 declare global {
