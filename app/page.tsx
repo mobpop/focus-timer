@@ -1,66 +1,278 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client';
 
-export default function Home() {
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+
+interface Subject {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export default function TimerPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  // Timer state
+  const [totalSeconds, setTotalSeconds] = useState(25 * 60); // Default 25 min
+  const [remainingSeconds, setRemainingSeconds] = useState(25 * 60);
+  const [isRunning, setIsRunning] = useState(false);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [inputMinutes, setInputMinutes] = useState('25');
+
+  const startTimeRef = useRef<Date | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auth check
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+
+  // Fetch subjects
+  useEffect(() => {
+    if (session) {
+      fetch('/api/subjects')
+        .then(res => res.json())
+        .then(data => {
+          setSubjects(data);
+          if (data.length > 0 && !selectedSubjectId) {
+            setSelectedSubjectId(data[0].id);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [session, selectedSubjectId]);
+
+  // Timer logic
+  useEffect(() => {
+    if (isRunning && remainingSeconds > 0) {
+      intervalRef.current = setInterval(() => {
+        setRemainingSeconds(prev => {
+          if (prev <= 1) {
+            handleComplete();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isRunning, remainingSeconds]);
+
+  const handleComplete = useCallback(async () => {
+    setIsRunning(false);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
+    // Notify user
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('⏱️ タイマー完了！', {
+        body: 'お疲れ様でした。休憩を取りましょう。',
+      });
+    }
+
+    // Record session
+    if (startTimeRef.current && selectedSubjectId) {
+      const endTime = new Date();
+      const duration = totalSeconds;
+
+      try {
+        await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subjectId: selectedSubjectId,
+            startTime: startTimeRef.current.toISOString(),
+            endTime: endTime.toISOString(),
+            duration,
+          }),
+        });
+      } catch (error) {
+        console.error('Failed to save session:', error);
+      }
+    }
+
+    // Reset
+    startTimeRef.current = null;
+  }, [selectedSubjectId, totalSeconds]);
+
+  const handleStart = () => {
+    if (!isRunning) {
+      startTimeRef.current = new Date();
+      setIsRunning(true);
+
+      // Request notification permission
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+  };
+
+  const handlePause = () => {
+    setIsRunning(false);
+  };
+
+  const handleReset = () => {
+    setIsRunning(false);
+    setRemainingSeconds(totalSeconds);
+    startTimeRef.current = null;
+  };
+
+  const handleSetTime = () => {
+    const mins = parseInt(inputMinutes) || 25;
+    const secs = mins * 60;
+    setTotalSeconds(secs);
+    setRemainingSeconds(secs);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const progress = ((totalSeconds - remainingSeconds) / totalSeconds) * 100;
+
+  if (status === 'loading') {
+    return (
+      <div className="container" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p className="text-muted">読み込み中...</p>
+      </div>
+    );
+  }
+
+  if (!session) return null;
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
+    <div className="container" style={{ minHeight: '100vh', paddingBottom: '100px' }}>
+      <header style={{ textAlign: 'center', paddingTop: 'var(--space-xl)' }}>
+        <h1 style={{ fontSize: '1.25rem', fontWeight: 600 }}>⏱️ Focus Timer</h1>
+        <p className="text-muted" style={{ fontSize: '0.875rem' }}>
+          こんにちは、{session.user?.name || session.user?.email}さん
+        </p>
+      </header>
+
+      {/* Timer Display */}
+      <div className="glass-card mt-xl" style={{ textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
+        {/* Progress ring background */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: `conic-gradient(var(--color-primary) ${progress}%, transparent ${progress}%)`,
+          opacity: 0.1,
+        }} />
+
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <div className="timer-display">
+            {formatTime(remainingSeconds)}
+          </div>
+
+          {/* Subject selector */}
+          <div className="mt-lg">
+            <select
+              className="select"
+              value={selectedSubjectId}
+              onChange={(e) => setSelectedSubjectId(e.target.value)}
+              disabled={isRunning}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
+              {subjects.map(subject => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Controls */}
+          <div className="flex justify-center gap-md mt-lg">
+            {!isRunning ? (
+              <button
+                className="btn btn-primary btn-icon btn-large"
+                onClick={handleStart}
+                disabled={!selectedSubjectId}
+              >
+                ▶
+              </button>
+            ) : (
+              <button
+                className="btn btn-secondary btn-icon btn-large"
+                onClick={handlePause}
+              >
+                ⏸
+              </button>
+            )}
+            <button
+              className="btn btn-ghost btn-icon btn-large"
+              onClick={handleReset}
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              ↺
+            </button>
+          </div>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </div>
+
+      {/* Time presets */}
+      <div className="glass-card mt-lg">
+        <p className="label">時間設定</p>
+        <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+          {[15, 25, 45, 60, 90].map(mins => (
+            <button
+              key={mins}
+              className={`btn ${totalSeconds === mins * 60 ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => {
+                setTotalSeconds(mins * 60);
+                setRemainingSeconds(mins * 60);
+                setInputMinutes(mins.toString());
+              }}
+              disabled={isRunning}
+              style={{ flex: '1', minWidth: '60px' }}
+            >
+              {mins}分
+            </button>
+          ))}
         </div>
-      </main>
+        <div className="flex gap-sm mt-md">
+          <input
+            type="number"
+            className="input"
+            value={inputMinutes}
+            onChange={(e) => setInputMinutes(e.target.value)}
+            min={1}
+            max={180}
+            disabled={isRunning}
+            style={{ flex: 1 }}
+          />
+          <button
+            className="btn btn-secondary"
+            onClick={handleSetTime}
+            disabled={isRunning}
+          >
+            設定
+          </button>
+        </div>
+      </div>
+
+      {/* Bottom Navigation */}
+      <nav className="nav">
+        <Link href="/" className="nav-item active">
+          <span className="nav-icon">⏱️</span>
+          <span>タイマー</span>
+        </Link>
+        <Link href="/subjects" className="nav-item">
+          <span className="nav-icon">📚</span>
+          <span>科目</span>
+        </Link>
+        <Link href="/analytics" className="nav-item">
+          <span className="nav-icon">📊</span>
+          <span>分析</span>
+        </Link>
+      </nav>
     </div>
   );
 }
