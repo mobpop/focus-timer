@@ -9,13 +9,7 @@ const prismaClientSingleton = () => {
         console.log('DATABASE_URL found (length: ' + url.length + ')');
     }
 
-    return new PrismaClient({
-        datasources: {
-            db: {
-                url: process.env.DATABASE_URL,
-            },
-        },
-    });
+    return new PrismaClient();
 };
 
 declare global {
