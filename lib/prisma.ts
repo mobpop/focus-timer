@@ -1,15 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 
 const prismaClientSingleton = () => {
-    // Debug logging
-    const url = process.env.DATABASE_URL;
-    if (!url) {
-        console.error('CRITICAL: DATABASE_URL is missing in runtime environment');
-    } else {
-        console.log('DATABASE_URL found (length: ' + url.length + ')');
-    }
-
-    // Explicitly pass the database URL to bypass schema.prisma env loading issues
     return new PrismaClient({
         datasources: {
             db: {
