@@ -195,7 +195,7 @@ export default function AnalyticsPage() {
                                 ))}
                             </Pie>
                             <Tooltip
-                                formatter={(value: number) => formatMinutes(value)}
+                                formatter={(value: number | string | Array<number | string>) => formatMinutes(Number(value))}
                                 contentStyle={{
                                     background: 'var(--color-surface)',
                                     border: 'var(--glass-border)',
