@@ -9,7 +9,14 @@ const prismaClientSingleton = () => {
         console.log('DATABASE_URL found (length: ' + url.length + ')');
     }
 
-    return new PrismaClient();
+    // Explicitly pass the database URL to bypass schema.prisma env loading issues
+    return new PrismaClient({
+        datasources: {
+            db: {
+                url: process.env.DATABASE_URL,
+            },
+        },
+    });
 };
 
 declare global {
