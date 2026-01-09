@@ -84,21 +84,31 @@ export default function TimerPage() {
         audioCtx.resume();
       }
 
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
+      const now = audioCtx.currentTime;
 
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
+      // Create a chime sound using two frequencies (harmonics)
+      const playTone = (freq: number, startTime: number, duration: number, volume: number) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
 
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
-      oscillator.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.5); // A4
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startTime);
 
-      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(volume, startTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
 
-      oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.5);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+      };
+
+      // Play a simple high-low chime (E5 and C5)
+      playTone(659.25, now, 1.5, 0.1); // E5
+      playTone(523.25, now + 0.1, 2.0, 0.08); // C5
+
     } catch (e) {
       console.error('Failed to play sound:', e);
     }
@@ -162,22 +172,6 @@ export default function TimerPage() {
       if ('Notification' in window && Notification.permission !== 'granted') {
         Notification.requestPermission();
       }
-    }
-  };
-
-  const testNotification = () => {
-    playChime();
-    if ('Notification' in window) {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          new Notification('📢 通知テスト', {
-            body: '通知と音が正常に機能しています！',
-            icon: '/favicon.ico'
-          });
-        } else {
-          alert('通知が許可されていません。ブラウザの設定から許可してください。');
-        }
-      });
     }
   };
 
@@ -286,16 +280,7 @@ export default function TimerPage() {
 
       {/* Time presets */}
       <div className="glass-card mt-lg">
-        <div className="flex justify-between items-center mb-sm">
-          <p className="label" style={{ marginBottom: 0 }}>時間設定</p>
-          <button
-            className="btn btn-ghost"
-            style={{ fontSize: '0.75rem', padding: '4px 8px' }}
-            onClick={testNotification}
-          >
-            🔔 通知・音のテスト
-          </button>
-        </div>
+        <p className="label">時間設定</p>
         <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
           {[15, 25, 45, 60, 90].map(mins => (
             <button
