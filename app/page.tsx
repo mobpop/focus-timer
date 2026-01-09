@@ -66,14 +66,43 @@ export default function TimerPage() {
     };
   }, [isRunning, remainingSeconds]);
 
+  const playChime = useCallback(() => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioContextClass();
+
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+      oscillator.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.5); // A4
+
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.5);
+    } catch (e) {
+      console.error('Failed to play sound:', e);
+    }
+  }, []);
+
   const handleComplete = useCallback(async () => {
     setIsRunning(false);
     if (intervalRef.current) clearInterval(intervalRef.current);
 
+    // Play sound
+    playChime();
+
     // Notify user
     if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('⏱️ タイマー完了！', {
-        body: 'お疲れ様でした。休憩を取りましょう。',
+      new Notification('⏱️ フォーカスタイマー完了！', {
+        body: '設定した時間が経過しました。お疲れ様でした！',
+        icon: '/favicon.ico'
       });
     }
 
@@ -104,6 +133,15 @@ export default function TimerPage() {
 
   const handleStart = () => {
     if (!isRunning) {
+      // Resume AudioContext on user interaction if needed
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        const dummyCtx = new AudioContextClass();
+        if (dummyCtx.state === 'suspended') {
+          dummyCtx.resume();
+        }
+      }
+
       startTimeRef.current = new Date();
       setIsRunning(true);
 
