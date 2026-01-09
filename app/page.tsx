@@ -25,6 +25,7 @@ export default function TimerPage() {
 
   const startTimeRef = useRef<Date | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   // Auth check
   useEffect(() => {
@@ -52,13 +53,7 @@ export default function TimerPage() {
   useEffect(() => {
     if (isRunning && remainingSeconds > 0) {
       intervalRef.current = setInterval(() => {
-        setRemainingSeconds(prev => {
-          if (prev <= 1) {
-            handleComplete();
-            return 0;
-          }
-          return prev - 1;
-        });
+        setRemainingSeconds(prev => prev - 1);
       }, 1000);
     }
     return () => {
@@ -66,10 +61,28 @@ export default function TimerPage() {
     };
   }, [isRunning, remainingSeconds]);
 
+  // Handle timer completion
+  useEffect(() => {
+    if (isRunning && remainingSeconds === 0) {
+      handleComplete();
+    }
+  }, [isRunning, remainingSeconds]);
+
   const playChime = useCallback(() => {
     try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioContextClass();
+      if (!audioContextRef.current) {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          audioContextRef.current = new AudioContextClass();
+        }
+      }
+
+      const audioCtx = audioContextRef.current;
+      if (!audioCtx) return;
+
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
 
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
@@ -133,22 +146,38 @@ export default function TimerPage() {
 
   const handleStart = () => {
     if (!isRunning) {
-      // Resume AudioContext on user interaction if needed
+      // Initialize/Resume AudioContext on user interaction
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioContextClass) {
-        const dummyCtx = new AudioContextClass();
-        if (dummyCtx.state === 'suspended') {
-          dummyCtx.resume();
-        }
+      if (!audioContextRef.current && AudioContextClass) {
+        audioContextRef.current = new AudioContextClass();
+      }
+      if (audioContextRef.current?.state === 'suspended') {
+        audioContextRef.current.resume();
       }
 
       startTimeRef.current = new Date();
       setIsRunning(true);
 
       // Request notification permission
-      if ('Notification' in window && Notification.permission === 'default') {
+      if ('Notification' in window && Notification.permission !== 'granted') {
         Notification.requestPermission();
       }
+    }
+  };
+
+  const testNotification = () => {
+    playChime();
+    if ('Notification' in window) {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          new Notification('📢 通知テスト', {
+            body: '通知と音が正常に機能しています！',
+            icon: '/favicon.ico'
+          });
+        } else {
+          alert('通知が許可されていません。ブラウザの設定から許可してください。');
+        }
+      });
     }
   };
 
@@ -257,7 +286,16 @@ export default function TimerPage() {
 
       {/* Time presets */}
       <div className="glass-card mt-lg">
-        <p className="label">時間設定</p>
+        <div className="flex justify-between items-center mb-sm">
+          <p className="label" style={{ marginBottom: 0 }}>時間設定</p>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+            onClick={testNotification}
+          >
+            🔔 通知・音のテスト
+          </button>
+        </div>
         <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
           {[15, 25, 45, 60, 90].map(mins => (
             <button
